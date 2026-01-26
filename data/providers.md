@@ -40,7 +40,7 @@ https://api.proxyscrape.com/v4/free-proxy-list/get?request=get_proxies&protocol=
 
 https://api.proxyscrape.com/v4/free-proxy-list/get?request=get_proxies&protocol=http&skip=0&proxy_format=protocolipport&format=json&limit=10000&timeout=20000
 
-# 24 saatte bir yenilenmesi gereken link o yüzden provider seçimi kısmında bu linki kullanıcıdan istet https://advanced.name/freeproxy buraya yönlendirip
+# 24 saatte bir yenilenmesi gereken link o yüzden provider seçimi kısmında bu linki kullanıcıdan ister https://advanced.name/freeproxy buraya yönlendirip
 
 http = https://advanced.name/freeproxy/6977bed17cb4b?type=http
 
