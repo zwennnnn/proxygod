@@ -1,0 +1,4 @@
+aiohttp
+aiohttp_socks
+rich
+fake-useragent
