@@ -55,5 +55,6 @@ We would like to thank the following proxy providers for their public lists:
 *   **[Roosterkid](https://github.com/roosterkid/openproxylist)**
 *   **[Vakhov](https://github.com/vakhov/fresh-proxy-list)**
 *   **[Advanced.name](https://advanced.name/)**
+*   **[ProxyDB](https://proxydb.net/)**
 
 *And many more to come! New providers are added regularly to ensure the best results.*
