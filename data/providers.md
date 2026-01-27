@@ -29,7 +29,7 @@ https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/proto
 
 # Socks4 API
 
-https://api.proxyscrape.com/v4/free-proxy-list/get?request=get_proxies&protocol=socks4&skip=0&proxy_format=protocolipport&format=json&limit=10000&timeout=20000  
+https://api.proxyscrape.com/v4/free-proxy-list/get?request=get_proxies&protocol=socks4&skip=0&proxy_format=protocolipport&format=json&limit=10000&timeout=20000
 
 https://proxylist.geonode.com/api/proxy-list?protocols=socks4&limit=500&page=1&sort_by=lastChecked&sort_type=desc
 

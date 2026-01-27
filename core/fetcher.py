@@ -2,8 +2,11 @@ import re
 import aiohttp
 import asyncio
 import json
+import time
 from typing import List, Set, Union
 from rich.console import Console
+from rich.panel import Panel
+from rich.live import Live
 from .models import Proxy, Protocol
 
 console = Console()
@@ -16,7 +19,7 @@ HEADERS = {
 
 async def fetch_url(session: aiohttp.ClientSession, url: str) -> str:
     try:
-        async with session.get(url, headers=HEADERS, timeout=10) as response:
+        async with session.get(url, headers=HEADERS, timeout=30) as response:
             if response.status == 200:
                 return await response.text()
     except Exception:
@@ -84,7 +87,90 @@ def parse_proxies_from_text(content: str, default_protocol: Protocol) -> List[Pr
     
     return proxies
 
+
+async def fetch_proxydb(session: aiohttp.ClientSession, on_progress=None) -> List[Proxy]:
+    """Scrapes proxydb.net pages for proxies."""
+    import random
+    
+    base_url = "https://proxydb.net/?country=&offset={offset}"
+    max_offset = 3340
+    step = 30
+    delay_range = (1.0, 2.5)
+    
+    proxydb_proxies = []
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Referer": "https://proxydb.net/"
+    }
+    
+    for offset in range(0, max_offset + 1, step):
+        url = base_url.format(offset=offset)
+        retries = 3
+        success = False
+        batch_proxies = []
+
+        for attempt in range(retries):
+            try:
+                async with session.get(url, headers=headers, timeout=20) as response:
+                    if response.status == 200:
+                        content = await response.text()
+                        rows = re.findall(r'<tr>(.*?)</tr>', content, re.DOTALL)
+                        
+                        for row in rows:
+                            cells = row.split('</td>')
+                            if len(cells) < 3: continue
+                            
+                            ip_m = re.search(r'(?:>|")(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:<|")', cells[0])
+                            if not ip_m: continue
+                            ip = ip_m.group(1)
+                            
+                            port_m = re.search(r'<a[^>]*>(\d+)</a>', cells[1])
+                            if not port_m: port_m = re.search(r'>(\d+)<', cells[1])
+                            if not port_m: continue
+                            port = int(port_m.group(1))
+                            
+                            p_cell = cells[2]
+                            protocol = Protocol.HTTP
+                            if "socks5" in p_cell.lower(): protocol = Protocol.SOCKS5
+                            elif "socks4" in p_cell.lower(): protocol = Protocol.SOCKS4
+                            
+                            p = Proxy(ip=ip, port=port, protocol=protocol)
+                            proxydb_proxies.append(p)
+                            batch_proxies.append(p)
+                        
+                        success = True
+                        break
+                    elif response.status == 429:
+                        wait = 30 * (attempt + 1)
+                        if on_progress:
+                            # Notify 429 wait? Optional.
+                            pass
+                        await asyncio.sleep(wait)
+                        continue
+                    else:
+                        break
+            except Exception:
+                await asyncio.sleep(2)
+        
+        if on_progress:
+            try:
+                await on_progress(batch_proxies, offset, max_offset)
+            except Exception:
+                pass
+
+        if not success:
+            pass
+        
+        await asyncio.sleep(random.uniform(*delay_range))
+
+    return proxydb_proxies
+
+
 async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> List[Proxy]:
+    with open("fetch_stats.txt", "w", encoding="utf-8") as f:
+        f.write(f"--- Proxy Fetch Stats ({time.strftime('%Y-%m-%d %H:%M:%S')}) ---\n")
+
     all_proxies: Set[Proxy] = set()
     
     urls_by_protocol = {
@@ -101,27 +187,18 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
             
         for line in lines:
             line = line.strip()
-            if not line:
-                continue
+            if not line: continue
             
             lower_line = line.lower()
-            if "socks4" in lower_line and "api" in lower_line:
-                current_protocol = Protocol.SOCKS4
-            elif "socks5" in lower_line and "api" in lower_line:
-                current_protocol = Protocol.SOCKS5
-            elif "http" in lower_line and "api" in lower_line:
-                current_protocol = Protocol.HTTP
-            elif "socks4" in lower_line:
-                current_protocol = Protocol.SOCKS4
-            elif "socks5" in lower_line:
-                current_protocol = Protocol.SOCKS5
-            elif "http" in lower_line:
-                current_protocol = Protocol.HTTP
+            if "socks4" in lower_line and "api" in lower_line: current_protocol = Protocol.SOCKS4
+            elif "socks5" in lower_line and "api" in lower_line: current_protocol = Protocol.SOCKS5
+            elif "http" in lower_line and "api" in lower_line: current_protocol = Protocol.HTTP
+            elif "socks4" in lower_line: current_protocol = Protocol.SOCKS4
+            elif "socks5" in lower_line: current_protocol = Protocol.SOCKS5
+            elif "http" in lower_line: current_protocol = Protocol.HTTP
             
             if line.startswith("http"):
-                if "advanced.name" in line:
-                    continue 
-                
+                if "advanced.name" in line: continue 
                 urls_by_protocol[current_protocol].append(line)
                 
     except FileNotFoundError:
@@ -134,22 +211,87 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
         urls_by_protocol[Protocol.SOCKS4].append(f"{base_url}?type=socks4")
         urls_by_protocol[Protocol.SOCKS5].append(f"{base_url}?type=socks5")
 
-    async with aiohttp.ClientSession() as session:
-        tasks = []
+    # State for UI
+    total_fetched = 0
+    start_time = time.time()
+    
+    # We will use a shared live update function
+    current_live_update = None
+
+    async def master_callback(new_proxies, current_step=0, total_steps=0):
+        nonlocal total_fetched
+        added_count = 0
+        for p in new_proxies:
+            if p not in all_proxies:
+                all_proxies.add(p)
+                added_count += 1
         
-        async def fetch_and_parse(url, protocol):
+        total_fetched = len(all_proxies)
+        
+        # ETR Calculation
+        eta_str = "Calculating..."
+        pct = 0
+        if total_steps > 0:
+            if current_step > 0:
+                elapsed = time.time() - start_time
+                ratio = current_step / total_steps
+                if ratio > 0:
+                    est_total = elapsed / ratio
+                    rem = est_total - elapsed
+                    if rem < 0: rem = 0
+                    m, s = divmod(int(rem), 60)
+                    eta_str = f"{m}m {s}s"
+            
+            pct = int((current_step/total_steps)*100)
+
+        # Update UI if Live is active
+        if current_live_update:
+            content = f"[bold green]Total Unique Proxies: {total_fetched}[/bold green]"
+            if total_steps > 0:
+                content += f"\n[yellow]Scanning ProxyDB: {pct}%[/yellow]"
+                content += f"\n[cyan]Estimated Time Remaining: {eta_str}[/cyan]"
+            else:
+                 # Initial phase
+                 content += f"\n[dim]Scanning standard providers...[/dim]"
+            
+            current_live_update(Panel(content, title="Scraping Proxies", border_style="cyan"))
+
+    async with aiohttp.ClientSession() as session:
+        
+        # Wrapped standard fetcher
+        async def fetch_standard(url, protocol):
              content = await fetch_url(session, url)
              found = parse_proxies_from_text(content, protocol)
+             
+             # Log stats
+             msg = f"Fetched {len(found)} from {url}" if found else f"Failed {url}"
+             with open("fetch_stats.txt", "a", encoding="utf-8") as f:
+                 f.write(msg + "\n")
+                 
+             # Update global
+             await master_callback(found, 0, 0)
              return found
-        
+
+        # Prepare Tasks
+        tasks = []
         for protocol, urls in urls_by_protocol.items():
             for url in urls:
-                tasks.append(fetch_and_parse(url, protocol))
-                
-        results = await asyncio.gather(*tasks)
+                tasks.append(fetch_standard(url, protocol))
         
-        for proxy_list in results:
-            for p in proxy_list:
-                all_proxies.add(p)
-                
+        # Add ProxyDB task with callback
+        tasks.append(fetch_proxydb(session, master_callback))
+
+        # Launch UI and Tasks
+        with Live(console=console, transient=True, refresh_per_second=4) as live:
+             current_live_update = live.update
+             
+             live.update(Panel("[cyan]Initializing Scrape...[/cyan]", title="Scraping", border_style="cyan"))
+             
+             # Run all tasks parallel
+             await asyncio.gather(*tasks)
+             
+             # Final
+             live.update(Panel(f"[bold green]Scraping Complete![/bold green]\nTotal Unique: {len(all_proxies)}", border_style="green"))
+             await asyncio.sleep(1.5)
+
     return list(all_proxies)

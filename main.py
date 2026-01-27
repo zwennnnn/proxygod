@@ -54,8 +54,9 @@ async def main():
     advanced_url = console.input("[bold green]Paste the Advanced.name link here (Enter to skip): [/bold green]")
 
     console.print()
-    with console.status("[bold yellow]Fetching proxies from providers...[/bold yellow]", spinner="dots"):
-        proxies = await fetch_all_proxies(providers_path, advanced_url if advanced_url.strip() else None)
+    # console.print()
+    # Fetcher handles its own UI now
+    proxies = await fetch_all_proxies(providers_path, advanced_url if advanced_url.strip() else None)
         
     console.print(f"[green]Successfully fetched {len(proxies)} unique proxies![/green]")
     if not proxies:
