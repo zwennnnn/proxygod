@@ -31,16 +31,34 @@ https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/proto
 
 https://api.proxyscrape.com/v4/free-proxy-list/get?request=get_proxies&protocol=socks4&skip=0&proxy_format=protocolipport&format=json&limit=10000&timeout=20000  
 
+https://proxylist.geonode.com/api/proxy-list?protocols=socks4&limit=500&page=1&sort_by=lastChecked&sort_type=desc
+
+https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS4.txt
+
+https://raw.githubusercontent.com/vakhov/fresh-proxy-list/refs/heads/master/socks4.txt
+
 # Socks5 API
 
 https://api.proxyscrape.com/v4/free-proxy-list/get?request=get_proxies&protocol=socks5&skip=0&proxy_format=protocolipport&format=json&limit=10000&timeout=20000
+
+https://proxylist.geonode.com/api/proxy-list?protocols=socks5&limit=500&page=1&sort_by=lastChecked&sort_type=desc
+
+https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5.txt
+
+https://raw.githubusercontent.com/vakhov/fresh-proxy-list/refs/heads/master/socks5.txt
 
 # HTTP API
 
 
 https://api.proxyscrape.com/v4/free-proxy-list/get?request=get_proxies&protocol=http&skip=0&proxy_format=protocolipport&format=json&limit=10000&timeout=20000
 
-# 24 saatte bir yenilenmesi gereken link o yüzden provider seçimi kısmında bu linki kullanıcıdan ister https://advanced.name/freeproxy buraya yönlendirip
+https://proxylist.geonode.com/api/proxy-list?protocols=http&limit=500&page=1&sort_by=lastChecked&sort_type=desc
+
+https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS.txt
+
+https://raw.githubusercontent.com/vakhov/fresh-proxy-list/refs/heads/master/https.txt
+
+# 24 saatte bir yenilenmesi gereken link o yüzden provider seçimi kısmında bu linki kullanıcıdan isteriz https://advanced.name/freeproxy buraya yönlendirip
 
 http = https://advanced.name/freeproxy/6977bed17cb4b?type=http
 

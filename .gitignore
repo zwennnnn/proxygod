@@ -10,3 +10,10 @@ output/
 .vscode/
 .idea/
 *.log
+
+# PyInstaller
+build/
+dist/
+*.spec
+*.exe
+*.ico

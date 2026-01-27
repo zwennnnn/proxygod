@@ -27,17 +27,27 @@ def print_banner_simple():
     """
     console.print(Panel(banner_text, border_style="green", expand=False))
 
+def get_resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
 async def main():
     print_banner_simple()
     
-    if not os.path.exists("data/providers.md"):
-        if os.path.exists("providers.md"):
+    # Try to find providers.md in the bundle or local file system
+    providers_path = get_resource_path(os.path.join("data", "providers.md"))
+    
+    if not os.path.exists(providers_path):
+        # Fallback to local paths if bundle path fails (dev mode mixed)
+        if os.path.exists("data/providers.md"):
+            providers_path = "data/providers.md"
+        elif os.path.exists("providers.md"):
             providers_path = "providers.md"
         else:
             console.print("[bold red]ERROR: providers.md not found![/bold red]")
             return
-    else:
-        providers_path = "data/providers.md"
 
     console.print("\n[bold cyan]Setup[/bold cyan]")
     console.print("Please visit [link=https://advanced.name/freeproxy]https://advanced.name/freeproxy[/link] for daily rotating proxies.")

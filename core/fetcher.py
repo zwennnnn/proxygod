@@ -28,6 +28,34 @@ def parse_proxies_from_text(content: str, default_protocol: Protocol) -> List[Pr
     
     try:
         data = json.loads(content)
+        
+        # Geonode API support
+        if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
+             for p_data in data["data"]:
+                if "ip" in p_data and "port" in p_data:
+                    # Geonode returns protocols as a list, e.g. ["socks4"]
+                    proto_list = p_data.get("protocols", [])
+                    if isinstance(proto_list, list) and len(proto_list) > 0:
+                        proto_str = proto_list[0].lower()
+                    else:
+                        proto_str = str(p_data.get("protocol", "")).lower()
+
+                    protocol = default_protocol
+                    if "socks4" in proto_str:
+                        protocol = Protocol.SOCKS4
+                    elif "socks5" in proto_str:
+                        protocol = Protocol.SOCKS5
+                    elif "http" in proto_str:
+                        protocol = Protocol.HTTP
+                        
+                    proxies.append(Proxy(
+                        ip=p_data["ip"], 
+                        port=int(p_data["port"]), 
+                        protocol=protocol
+                    ))
+             return proxies
+
+        # ProxyScrape and others
         if isinstance(data, dict) and "proxies" in data and isinstance(data["proxies"], list):
             for p_data in data["proxies"]:
                 if "ip" in p_data and "port" in p_data:
