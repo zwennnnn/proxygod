@@ -45,14 +45,15 @@ Simply upload the `output/http.txt`, `output/socks4.txt` or `output/socks5.txt` 
 
 ## Special Thanks
 
-This project wouldn't be possible without these amazing open-source proxy providers:
+We would like to thank the following proxy providers for their public lists:
 
-- **[TheSpeedX](https://github.com/TheSpeedX/SOCKS-List)**
-- **[monosans](https://github.com/monosans/proxy-list)**
-- **[clarketm](https://github.com/clarketm/proxy-list)**
-- **[iplocate](https://github.com/iplocate/free-proxy-list)**
-- **[hookzof](https://github.com/hookzof/socks5_list)**
-- **[ProxyScrape](https://proxyscrape.com/)**
-- **[Advanced.name](https://advanced.name/)**
+*   **[TheSpeedX](https://github.com/TheSpeedX/SOCKS-List)**
+*   **[Monosans](https://github.com/monosans/proxy-list)**
+*   **[ProxyScrape](https://proxyscrape.com/)**
+*   **[Hookzof](https://github.com/hookzof/socks5_list)**
+*   **[Geonode](https://geonode.com/free-proxy-list)**
+*   **[Roosterkid](https://github.com/roosterkid/openproxylist)**
+*   **[Vakhov](https://github.com/vakhov/fresh-proxy-list)**
+*   **[Advanced.name](https://advanced.name/)**
 
 *And many more to come! New providers are added regularly to ensure the best results.*
