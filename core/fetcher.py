@@ -166,6 +166,66 @@ async def fetch_proxydb(session: aiohttp.ClientSession, on_progress=None) -> Lis
 
     return proxydb_proxies
 
+async def fetch_free_proxy_list(session: aiohttp.ClientSession, on_progress=None) -> List[Proxy]:
+    """Scrapes free-proxy-list.net for proxies."""
+    targets = [
+        {"url": "https://free-proxy-list.net/tr/socks-proxy.html", "type": "socks"},
+        {"url": "https://free-proxy-list.net/tr/", "type": "http"}
+    ]
+    
+    found_proxies = []
+    
+    for target in targets:
+        url = target["url"]
+        p_type = target["type"]
+        
+        try:
+            async with session.get(url, headers=HEADERS, timeout=20) as response:
+                if response.status == 200:
+                    content = await response.text()
+                    
+                    # Extract table body
+                    tbody_match = re.search(r'<tbody>(.*?)</tbody>', content, re.DOTALL)
+                    if not tbody_match: continue
+                    tbody = tbody_match.group(1)
+                    
+                    rows = re.findall(r'<tr>(.*?)</tr>', tbody, re.DOTALL)
+                    
+                    batch_proxies = []
+                    for row in rows:
+                        cols = re.findall(r'<td.*?>(.*?)</td>', row)
+                        if not cols: continue
+                        
+                        if p_type == "socks" and len(cols) >= 5:
+                            ip = cols[0]
+                            port = cols[1]
+                            version = cols[4].lower()
+                            
+                            protocol = Protocol.SOCKS4
+                            if "socks5" in version: protocol = Protocol.SOCKS5
+                            elif "socks4" in version: protocol = Protocol.SOCKS4
+                            
+                            p = Proxy(ip=ip, port=int(port), protocol=protocol)
+                            found_proxies.append(p)
+                            batch_proxies.append(p)
+                            
+                        elif p_type == "http" and len(cols) >= 7:
+                            ip = cols[0]
+                            port = cols[1]
+                            protocol = Protocol.HTTP
+                            
+                            p = Proxy(ip=ip, port=int(port), protocol=protocol)
+                            found_proxies.append(p)
+                            batch_proxies.append(p)
+
+                    if on_progress:
+                        await on_progress(batch_proxies, 0, 0)
+                        
+        except Exception:
+            pass
+            
+    return found_proxies
+
 
 async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> List[Proxy]:
     with open("fetch_stats.txt", "w", encoding="utf-8") as f:
@@ -215,7 +275,6 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
     total_fetched = 0
     start_time = time.time()
     
-    # We will use a shared live update function
     current_live_update = None
 
     async def master_callback(new_proxies, current_step=0, total_steps=0):
@@ -248,7 +307,7 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
         if current_live_update:
             content = f"[bold green]Total Unique Proxies: {total_fetched}[/bold green]"
             if total_steps > 0:
-                content += f"\n[yellow]Scanning ProxyDB: {pct}%[/yellow]"
+                content += f"\n[yellow]Scanning ProxyDB & FreeProxyList: {pct}%[/yellow]"
                 content += f"\n[cyan]Estimated Time Remaining: {eta_str}[/cyan]"
             else:
                  # Initial phase
@@ -280,6 +339,8 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
         
         # Add ProxyDB task with callback
         tasks.append(fetch_proxydb(session, master_callback))
+        # Add FreeProxyList task
+        tasks.append(fetch_free_proxy_list(session, master_callback))
 
         # Launch UI and Tasks
         with Live(console=console, transient=True, refresh_per_second=4) as live:
