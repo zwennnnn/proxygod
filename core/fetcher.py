@@ -144,7 +144,7 @@ async def fetch_proxydb(session: aiohttp.ClientSession, on_progress=None) -> Lis
                     elif response.status == 429:
                         wait = 30 * (attempt + 1)
                         if on_progress:
-                            # Notify 429 wait? Optional.
+                           
                             pass
                         await asyncio.sleep(wait)
                         continue
