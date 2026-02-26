@@ -57,5 +57,6 @@ We would like to thank the following proxy providers for their public lists:
 *   **[Advanced.name](https://advanced.name/)**
 *   **[ProxyDB](https://proxydb.net/)**
 *   **[FreeProxyList](https://free-proxy-list.net/)**
+*   **[FreeProxyDB](https://freeproxydb.com/)** 
 
 *And many more to come! New providers are added regularly to ensure the best results.*

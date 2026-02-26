@@ -166,6 +166,45 @@ async def fetch_proxydb(session: aiohttp.ClientSession, on_progress=None) -> Lis
 
     return proxydb_proxies
 
+FREEPROXYDB_BASE = "https://freeproxydb.com/api/proxy/subscribe?country=&protocol=&anonymity=&speed=0,60&https=0&page_index={page_index}&page_size=100&subscribe_format=original"
+
+async def fetch_freeproxydb(session: aiohttp.ClientSession, on_progress=None) -> List[Proxy]:
+    all_proxies: List[Proxy] = []
+    for page_index in range(1, 26):
+        url = FREEPROXYDB_BASE.format(page_index=page_index)
+        try:
+            content = await fetch_url(session, url)
+            batch = []
+            for line in content.splitlines():
+                line = line.strip()
+                if not line.lower().startswith("socks://"):
+                    continue
+                rest = line[7:]  # "socks://"
+                if ":" not in rest:
+                    continue
+                try:
+                    ip, port_str = rest.rsplit(":", 1)
+                    port = int(port_str)
+                    if 1 <= port <= 65535:
+                        p = Proxy(ip=ip.strip(), port=port, protocol=Protocol.SOCKS5)
+                        all_proxies.append(p)
+                        batch.append(p)
+                except (ValueError, TypeError):
+                    continue
+            if content:
+                with open("fetch_stats.txt", "a", encoding="utf-8") as f:
+                    f.write(f"FreeProxyDB page {page_index}: {len(batch)} proxies\n")
+            if on_progress:
+                try:
+                    await on_progress(batch, page_index, 25)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        if page_index < 25:
+            await asyncio.sleep(1.5)
+    return all_proxies
+
 async def fetch_free_proxy_list(session: aiohttp.ClientSession, on_progress=None) -> List[Proxy]:
     """Scrapes free-proxy-list.net for proxies."""
     targets = [
@@ -341,6 +380,8 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
         tasks.append(fetch_proxydb(session, master_callback))
         # Add FreeProxyList task
         tasks.append(fetch_free_proxy_list(session, master_callback))
+        # FreeProxyDB API: page_index 1-25, 100 per page, socks://ip:port
+        tasks.append(fetch_freeproxydb(session, master_callback))
 
         # Launch UI and Tasks
         with Live(console=console, transient=True, refresh_per_second=4) as live:

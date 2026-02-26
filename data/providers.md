@@ -39,6 +39,8 @@ https://raw.githubusercontent.com/vakhov/fresh-proxy-list/refs/heads/master/sock
 
 # Socks5 API
 
+# https://freeproxydb.com/api/proxy/subscribe?country=&protocol=&anonymity=&speed=0,60&https=0&page_index=1&page_size=100&subscribe_format=original
+
 https://api.proxyscrape.com/v4/free-proxy-list/get?request=get_proxies&protocol=socks5&skip=0&proxy_format=protocolipport&format=json&limit=10000&timeout=20000
 
 https://proxylist.geonode.com/api/proxy-list?protocols=socks5&limit=500&page=1&sort_by=lastChecked&sort_type=desc
