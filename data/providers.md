@@ -51,6 +51,7 @@ https://raw.githubusercontent.com/vakhov/fresh-proxy-list/refs/heads/master/sock
 
 # HTTP API
 
+# https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&language=en-us
 
 https://api.proxyscrape.com/v4/free-proxy-list/get?request=get_proxies&protocol=http&skip=0&proxy_format=protocolipport&format=json&limit=10000&timeout=20000
 

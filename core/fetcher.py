@@ -17,6 +17,19 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 }
 
+# Progress constants for long-running providers (used for unified % display)
+PROXYDB_MAX_OFFSET = 3340
+PROXYDB_STEP = 30
+PROXYDB_STEPS = len(range(0, PROXYDB_MAX_OFFSET + 1, PROXYDB_STEP))
+
+FREEPROXYDB_PAGES = 25
+
+LUMIPROXY_PAGES = 29
+LUMIPROXY_BASE = (
+    "https://api.lumiproxy.com/web_v1/free-proxy/list"
+    "?page_size=60&page={page}&language=en-us"
+)
+
 async def fetch_url(session: aiohttp.ClientSession, url: str) -> str:
     try:
         async with session.get(url, headers=HEADERS, timeout=30) as response:
@@ -88,13 +101,16 @@ def parse_proxies_from_text(content: str, default_protocol: Protocol) -> List[Pr
     return proxies
 
 
-async def fetch_proxydb(session: aiohttp.ClientSession, on_progress=None) -> List[Proxy]:
+async def fetch_proxydb(
+    session: aiohttp.ClientSession,
+    on_progress=None,
+    progress_offset: int = 0,
+    total_steps: int = 0,
+) -> List[Proxy]:
     """Scrapes proxydb.net pages for proxies."""
     import random
     
     base_url = "https://proxydb.net/?country=&offset={offset}"
-    max_offset = 3340
-    step = 30
     delay_range = (1.0, 2.5)
     
     proxydb_proxies = []
@@ -104,7 +120,9 @@ async def fetch_proxydb(session: aiohttp.ClientSession, on_progress=None) -> Lis
         "Referer": "https://proxydb.net/"
     }
     
-    for offset in range(0, max_offset + 1, step):
+    for step_index, offset in enumerate(
+        range(0, PROXYDB_MAX_OFFSET + 1, PROXYDB_STEP), start=1
+    ):
         url = base_url.format(offset=offset)
         retries = 3
         success = False
@@ -153,9 +171,17 @@ async def fetch_proxydb(session: aiohttp.ClientSession, on_progress=None) -> Lis
             except Exception:
                 await asyncio.sleep(2)
         
-        if on_progress:
+        if on_progress and total_steps > 0:
             try:
-                await on_progress(batch_proxies, offset, max_offset)
+                global_step = progress_offset + step_index
+                await on_progress(
+                    batch_proxies,
+                    current_step=global_step,
+                    total_steps=total_steps,
+                    provider="ProxyDB",
+                    page=step_index,
+                    page_max=PROXYDB_STEPS,
+                )
             except Exception:
                 pass
 
@@ -166,11 +192,20 @@ async def fetch_proxydb(session: aiohttp.ClientSession, on_progress=None) -> Lis
 
     return proxydb_proxies
 
-FREEPROXYDB_BASE = "https://freeproxydb.com/api/proxy/subscribe?country=&protocol=&anonymity=&speed=0,60&https=0&page_index={page_index}&page_size=100&subscribe_format=original"
+FREEPROXYDB_BASE = (
+    "https://freeproxydb.com/api/proxy/subscribe"
+    "?country=&protocol=&anonymity=&speed=0,60&https=0"
+    "&page_index={page_index}&page_size=100&subscribe_format=original"
+)
 
-async def fetch_freeproxydb(session: aiohttp.ClientSession, on_progress=None) -> List[Proxy]:
+async def fetch_freeproxydb(
+    session: aiohttp.ClientSession,
+    on_progress=None,
+    progress_offset: int = 0,
+    total_steps: int = 0,
+) -> List[Proxy]:
     all_proxies: List[Proxy] = []
-    for page_index in range(1, 26):
+    for page_index in range(1, FREEPROXYDB_PAGES + 1):
         url = FREEPROXYDB_BASE.format(page_index=page_index)
         try:
             content = await fetch_url(session, url)
@@ -194,15 +229,99 @@ async def fetch_freeproxydb(session: aiohttp.ClientSession, on_progress=None) ->
             if content:
                 with open("fetch_stats.txt", "a", encoding="utf-8") as f:
                     f.write(f"FreeProxyDB page {page_index}: {len(batch)} proxies\n")
-            if on_progress:
+            if on_progress and total_steps > 0:
                 try:
-                    await on_progress(batch, page_index, 25)
+                    global_step = progress_offset + page_index
+                    await on_progress(
+                        batch,
+                        current_step=global_step,
+                        total_steps=total_steps,
+                        provider="FreeProxyDB",
+                        page=page_index,
+                        page_max=FREEPROXYDB_PAGES,
+                    )
                 except Exception:
                     pass
         except Exception:
             pass
-        if page_index < 25:
+        if page_index < FREEPROXYDB_PAGES:
             await asyncio.sleep(1.5)
+    return all_proxies
+
+async def fetch_lumiproxy(
+    session: aiohttp.ClientSession,
+    on_progress=None,
+    progress_offset: int = 0,
+    total_steps: int = 0,
+) -> List[Proxy]:
+    """
+    Fetches proxies from LumiProxy free-proxy API.
+    Pages: 1..LUMIPROXY_PAGES, page_size=60, 5s delay between requests.
+    """
+    all_proxies: List[Proxy] = []
+
+    for page in range(1, LUMIPROXY_PAGES + 1):
+        url = LUMIPROXY_BASE.format(page=page)
+        batch: List[Proxy] = []
+        try:
+            content = await fetch_url(session, url)
+            if content:
+                try:
+                    data = json.loads(content)
+                    items = (
+                        data.get("data", {}).get("list", [])
+                        if isinstance(data, dict)
+                        else []
+                    )
+                    for item in items:
+                        ip = item.get("ip")
+                        port = item.get("port")
+                        proto_num = item.get("protocol")
+                        if not ip or not port:
+                            continue
+
+                        # LumiProxy protocol mapping guess:
+                        # 4 -> SOCKS4, 8 -> SOCKS5, others -> HTTP
+                        protocol = Protocol.HTTP
+                        try:
+                            if proto_num == 4:
+                                protocol = Protocol.SOCKS4
+                            elif proto_num == 8:
+                                protocol = Protocol.SOCKS5
+                        except Exception:
+                            protocol = Protocol.HTTP
+
+                        try:
+                            p = Proxy(ip=str(ip), port=int(port), protocol=protocol)
+                            all_proxies.append(p)
+                            batch.append(p)
+                        except (TypeError, ValueError):
+                            continue
+                except json.JSONDecodeError:
+                    pass
+
+            with open("fetch_stats.txt", "a", encoding="utf-8") as f:
+                f.write(f"LumiProxy page {page}: {len(batch)} proxies\n")
+
+            if on_progress and total_steps > 0:
+                try:
+                    global_step = progress_offset + page
+                    await on_progress(
+                        batch,
+                        current_step=global_step,
+                        total_steps=total_steps,
+                        provider="LumiProxy",
+                        page=page,
+                        page_max=LUMIPROXY_PAGES,
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        if page < LUMIPROXY_PAGES:
+            await asyncio.sleep(5)
+
     return all_proxies
 
 async def fetch_free_proxy_list(session: aiohttp.ClientSession, on_progress=None) -> List[Proxy]:
@@ -258,7 +377,14 @@ async def fetch_free_proxy_list(session: aiohttp.ClientSession, on_progress=None
                             batch_proxies.append(p)
 
                     if on_progress:
-                        await on_progress(batch_proxies, 0, 0)
+                        await on_progress(
+                            batch_proxies,
+                            current_step=0,
+                            total_steps=0,
+                            provider="FreeProxyList",
+                            page=None,
+                            page_max=None,
+                        )
                         
         except Exception:
             pass
@@ -310,13 +436,31 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
         urls_by_protocol[Protocol.SOCKS4].append(f"{base_url}?type=socks4")
         urls_by_protocol[Protocol.SOCKS5].append(f"{base_url}?type=socks5")
 
+    # Progress configuration (for % and ETA)
+    global_total_steps = PROXYDB_STEPS + FREEPROXYDB_PAGES + LUMIPROXY_PAGES
+
     # State for UI
     total_fetched = 0
     start_time = time.time()
     
     current_live_update = None
 
-    async def master_callback(new_proxies, current_step=0, total_steps=0):
+    # Track per-provider page progress for display
+    provider_pages = {
+        "ProxyDB": {"page": 0, "total": PROXYDB_STEPS},
+        "FreeProxyDB": {"page": 0, "total": FREEPROXYDB_PAGES},
+        "LumiProxy": {"page": 0, "total": LUMIPROXY_PAGES},
+        "FreeProxyList": {"page": 0, "total": 0},
+    }
+
+    async def master_callback(
+        new_proxies,
+        current_step: int = 0,
+        total_steps: int = 0,
+        provider: str | None = None,
+        page: int | None = None,
+        page_max: int | None = None,
+    ):
         nonlocal total_fetched
         added_count = 0
         for p in new_proxies:
@@ -326,28 +470,52 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
         
         total_fetched = len(all_proxies)
         
-        # ETR Calculation
+        # Update per-provider page info
+        if provider and provider in provider_pages:
+            info = provider_pages[provider]
+            if page is not None:
+                info["page"] = page
+            if page_max is not None and page_max > 0:
+                info["total"] = page_max
+        
+        # ETR Calculation and % based on all providers together
         eta_str = "Calculating..."
         pct = 0
-        if total_steps > 0:
-            if current_step > 0:
-                elapsed = time.time() - start_time
-                ratio = current_step / total_steps
-                if ratio > 0:
-                    est_total = elapsed / ratio
-                    rem = est_total - elapsed
-                    if rem < 0: rem = 0
-                    m, s = divmod(int(rem), 60)
-                    eta_str = f"{m}m {s}s"
-            
-            pct = int((current_step/total_steps)*100)
+        # Sadece ProxyDB + FreeProxyDB + LumiProxy adımlarını hesaba kat
+        done_steps = (
+            provider_pages["ProxyDB"]["page"]
+            + provider_pages["FreeProxyDB"]["page"]
+            + provider_pages["LumiProxy"]["page"]
+        )
+        if global_total_steps > 0 and done_steps > 0:
+            elapsed = time.time() - start_time
+            ratio = done_steps / global_total_steps
+            if ratio > 0:
+                est_total = elapsed / ratio
+                rem = est_total - elapsed
+                if rem < 0:
+                    rem = 0
+                m, s = divmod(int(rem), 60)
+                eta_str = f"{m}m {s}s"
+            pct = int((done_steps / global_total_steps) * 100)
 
         # Update UI if Live is active
         if current_live_update:
             content = f"[bold green]Total Unique Proxies: {total_fetched}[/bold green]"
             if total_steps > 0:
-                content += f"\n[yellow]Scanning ProxyDB & FreeProxyList: {pct}%[/yellow]"
+                content += f"\n[yellow]Overall progress: {pct}%[/yellow]"
                 content += f"\n[cyan]Estimated Time Remaining: {eta_str}[/cyan]"
+
+                # Detailed provider status
+                for name, info in provider_pages.items():
+                    p_page = info.get("page", 0)
+                    p_total = info.get("total", 0)
+                    if p_total > 0 and p_page > 0:
+                        content += f"\n[white]{name}[/white]: page {p_page}/{p_total}"
+                    elif p_total > 0:
+                        content += f"\n[white]{name}[/white]: waiting (0/{p_total})"
+                    else:
+                        content += f"\n[white]{name}[/white]: running"
             else:
                  # Initial phase
                  content += f"\n[dim]Scanning standard providers...[/dim]"
@@ -366,8 +534,15 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
              with open("fetch_stats.txt", "a", encoding="utf-8") as f:
                  f.write(msg + "\n")
                  
-             # Update global
-             await master_callback(found, 0, 0)
+             # Update global (no effect on %)
+             await master_callback(
+                 found,
+                 current_step=0,
+                 total_steps=0,
+                 provider="Standard",
+                 page=None,
+                 page_max=None,
+             )
              return found
 
         # Prepare Tasks
@@ -376,12 +551,40 @@ async def fetch_all_proxies(providers_file: str, advanced_url: str = None) -> Li
             for url in urls:
                 tasks.append(fetch_standard(url, protocol))
         
-        # Add ProxyDB task with callback
-        tasks.append(fetch_proxydb(session, master_callback))
-        # Add FreeProxyList task
+        # Progress offsets for long-running providers
+        proxydb_offset = 0
+        freeproxydb_offset = PROXYDB_STEPS
+        lumiproxy_offset = PROXYDB_STEPS + FREEPROXYDB_PAGES
+        
+        # Add ProxyDB task with unified progress
+        tasks.append(
+            fetch_proxydb(
+                session,
+                master_callback,
+                progress_offset=proxydb_offset,
+                total_steps=global_total_steps,
+            )
+        )
+        # Add FreeProxyList task (instant, no %)
         tasks.append(fetch_free_proxy_list(session, master_callback))
         # FreeProxyDB API: page_index 1-25, 100 per page, socks://ip:port
-        tasks.append(fetch_freeproxydb(session, master_callback))
+        tasks.append(
+            fetch_freeproxydb(
+                session,
+                master_callback,
+                progress_offset=freeproxydb_offset,
+                total_steps=global_total_steps,
+            )
+        )
+        # LumiProxy API: page 1-29, 60 per page, 5s delay
+        tasks.append(
+            fetch_lumiproxy(
+                session,
+                master_callback,
+                progress_offset=lumiproxy_offset,
+                total_steps=global_total_steps,
+            )
+        )
 
         # Launch UI and Tasks
         with Live(console=console, transient=True, refresh_per_second=4) as live:

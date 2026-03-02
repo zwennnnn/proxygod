@@ -58,5 +58,6 @@ We would like to thank the following proxy providers for their public lists:
 *   **[ProxyDB](https://proxydb.net/)**
 *   **[FreeProxyList](https://free-proxy-list.net/)**
 *   **[FreeProxyDB](https://freeproxydb.com/)** 
+*   **[LumiProxy](https://www.lumiproxy.com/)** 
 
 *And many more to come! New providers are added regularly to ensure the best results.*
